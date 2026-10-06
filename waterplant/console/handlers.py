@@ -14,7 +14,12 @@ from waterplant.ns import Stage, treatment_line
 from waterplant.ph import validate_ph
 from waterplant.quota import Quota, check_quota, validate_amount
 from waterplant.reporting import audit_export, telemetry_export, to_csv
-from waterplant.scheduler import validate_threshold
+from waterplant.scheduler import (
+    validate_capacity,
+    validate_overlap,
+    validate_rush_mode,
+    validate_threshold,
+)
 from waterplant.store import export_state
 
 from . import checks, history, ops
@@ -23,7 +28,7 @@ from . import simulate as simulate_module
 from . import snapshot as snapshot_module
 from . import telemetry as telemetry_module
 from .cycle import run_cycle
-from .http import Request, Response, csv_response, json_response, text_response
+from .http import Request, Response, _to_int, csv_response, json_response, text_response
 from .report import text_report
 from .routes import route_table
 from .system import system_payload
@@ -318,6 +323,80 @@ def schedule_plan(server: "Server", request: Request) -> Response:
     return json_response(
         {"entries": [entry.as_dict() for entry in entries], "due": runtime.scheduler.due(runtime.bank)}
     )
+
+
+def board_state(server: "Server", request: Request) -> Response:
+    return json_response(server.runtime.board.state())
+
+
+def board_build(server: "Server", request: Request) -> Response:
+    runtime = server.runtime
+    trigger_id = request.str_field("trigger_id", "") or None
+    bed_ids = request.payload.get("bed_ids")
+    if bed_ids is None:
+        bed_ids = runtime.bank.bed_ids()
+    elif not isinstance(bed_ids, (list, tuple)):
+        raise RequestError(400, "field bed_ids must be a list")
+    threshold = request.float_field("threshold", runtime.board.threshold())
+    validate_threshold(threshold)
+    result = runtime.board.rebuild([str(item) for item in bed_ids], threshold, trigger_id)
+    return json_response(result)
+
+
+def board_rush(server: "Server", request: Request) -> Response:
+    runtime = server.runtime
+    bed_id = request.str_field("id")
+    request_id = request.str_field("request_id", "") or None
+    return json_response(runtime.board.rush(bed_id, request_id))
+
+
+def board_start(server: "Server", request: Request) -> Response:
+    runtime = server.runtime
+    bed_id = request.str_field("id")
+    request_id = request.str_field("request_id", "") or None
+    return json_response(runtime.board.start(bed_id, request_id))
+
+
+def board_finish(server: "Server", request: Request) -> Response:
+    runtime = server.runtime
+    bed_id = request.str_field("id")
+    request_id = request.str_field("request_id", "") or None
+    return json_response(runtime.board.finish(bed_id, request_id))
+
+
+def board_reconcile(server: "Server", request: Request) -> Response:
+    return json_response(server.runtime.board.reconcile())
+
+
+def board_capacity(server: "Server", request: Request) -> Response:
+    value = request.int_field("capacity")
+    validate_capacity(value)
+    return json_response({"capacity": server.runtime.board.set_capacity(value)})
+
+
+def board_policy(server: "Server", request: Request) -> Response:
+    rush_mode = request.str_field("rush_mode", "") or None
+    overlap = request.str_field("overlap", "") or None
+    if rush_mode is not None:
+        validate_rush_mode(rush_mode)
+    if overlap is not None:
+        validate_overlap(overlap)
+    return json_response(server.runtime.board.set_policy(rush_mode, overlap).as_dict())
+
+
+def schedule_window(server: "Server", request: Request) -> Response:
+    runtime = server.runtime
+    bed_id = request.str_field("id")
+    release = request.payload.get("release_offset")
+    deadline = request.payload.get("deadline_offset")
+    duration = request.payload.get("duration_slots")
+    window = runtime.board.set_window(
+        bed_id,
+        None if release is None else _to_int("release_offset", release),
+        None if deadline is None else _to_int("deadline_offset", deadline),
+        None if duration is None else _to_int("duration_slots", duration),
+    )
+    return json_response({"id": bed_id, "window": window.as_dict()})
 
 
 def intake_trend(server: "Server", request: Request) -> Response:

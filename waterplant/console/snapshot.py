@@ -26,6 +26,7 @@ def collect(rt: Runtime) -> dict[str, object]:
         "audit": rt.auditor.state().as_dict(),
         "ph": rt.stabilizer.state().as_dict(),
         "schedule": rt.scheduler.state(rt.bank).as_dict(),
+        "board": rt.board.state(),
         "trend": rt.trend.stats().as_dict(),
         "inventory": rt.inventory.state().as_dict(),
     }

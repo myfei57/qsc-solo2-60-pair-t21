@@ -36,4 +36,15 @@ def run_checks(rt: Runtime) -> list[dict[str, str]]:
         )
     else:
         checks.append({"name": "inventory", "status": "ok", "detail": "stock above reorder level"})
+    reconciliation = rt.board.reconcile()
+    if reconciliation["consistent"]:
+        checks.append({"name": "schedule-board", "status": "ok", "detail": "ledger matches drains"})
+    else:
+        checks.append(
+            {
+                "name": "schedule-board",
+                "status": "fail",
+                "detail": "; ".join(reconciliation["mismatches"]),
+            }
+        )
     return checks

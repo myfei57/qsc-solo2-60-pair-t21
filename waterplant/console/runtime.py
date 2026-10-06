@@ -13,7 +13,7 @@ from waterplant.intake import FlowRepository, InletController, Trend
 from waterplant.inventory import Inventory
 from waterplant.ph import Stabilizer
 from waterplant.quota import Accumulator
-from waterplant.scheduler import Scheduler
+from waterplant.scheduler import BedInputs, ScheduleBoard, Scheduler, SlotClock
 from waterplant.store import Store
 from waterplant.turb import Sampler
 
@@ -39,5 +39,13 @@ class Runtime:
         self.auditor = Auditor(store)
         self.stabilizer = Stabilizer(store)
         self.scheduler = Scheduler(store)
+        clock = SlotClock()
+        self.board = ScheduleBoard(
+            store,
+            BedInputs(bank, clock.slot_seconds),
+            self.auditor,
+            clock=clock,
+        )
+        self.board.bind_controller(self.backwash)
         self.trend = Trend(store)
         self.inventory = Inventory(store)

@@ -46,3 +46,19 @@ def validate_threshold(value: float) -> None:
         raise ValueError("threshold must be positive")
     if value > 1_000_000:
         raise ValueError("threshold exceeds the supported range")
+
+
+def validate_capacity(value: int) -> None:
+    """Reject crew capacities that cannot run even one wash at a time."""
+
+    if value < 1:
+        raise ValueError("capacity must be at least one crew")
+    if value > 1_000:
+        raise ValueError("capacity exceeds the supported range")
+
+
+def validate_horizon(value: int) -> None:
+    if value < 1:
+        raise ValueError("horizon must cover at least one slot")
+    if value > 10_000:
+        raise ValueError("horizon exceeds the supported range")

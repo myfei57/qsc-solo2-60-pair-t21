@@ -45,6 +45,8 @@ def text_report(rt: Runtime) -> str:
             f"scheduled={telemetry.schedule_due}"
         ),
         f"intake trend samples={telemetry.trend_samples}",
+        f"schedule board: {describe['board']}",
+        f"board waiting={rt.board.state()['waiting_queue']}",
         (
             f"inventory balance={telemetry.inventory_balance:.4f} "
             f"alerts={telemetry.inventory_alerts}"

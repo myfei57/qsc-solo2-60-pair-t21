@@ -45,6 +45,7 @@ class ConsoleCase(unittest.TestCase):
             "intake",
             "ph",
             "inventory",
+            "schedule-board",
         })
 
         status, snapshot = self.call("GET", "/snapshot")
@@ -66,6 +67,7 @@ class ConsoleCase(unittest.TestCase):
                 "audit",
                 "ph",
                 "schedule",
+                "board",
                 "trend",
                 "inventory",
             },
@@ -345,6 +347,73 @@ class ConsoleCase(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("metric,value", body)
         self.assertIn("filter_beds", body)
+
+    def test_schedule_board_routes(self) -> None:
+        for bed_id, zone, load in (("b1", 1, 9.0), ("b2", 2, 8.0), ("b3", 3, 7.0)):
+            status, body = self.call(
+                "POST", "/filter/add", {"id": bed_id, "zone": zone, "load": load}
+            )
+            self.assertEqual(status, 200)
+            self.call(
+                "POST",
+                "/schedule/window",
+                {"id": bed_id, "release_offset": 0, "deadline_offset": 6, "duration_slots": 1},
+            )
+
+        status, body = self.call("POST", "/schedule/board/capacity", {"capacity": 1})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["capacity"], 1)
+
+        status, body = self.call(
+            "POST", "/schedule/board/build", {"trigger_id": "plan-1", "threshold": 5.0}
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(body["rebuilt"])
+        _, repeated = self.call(
+            "POST", "/schedule/board/build", {"trigger_id": "plan-1", "threshold": 5.0}
+        )
+        self.assertFalse(repeated["rebuilt"])
+
+        status, state = self.call("GET", "/schedule/board")
+        self.assertEqual(status, 200)
+        self.assertEqual(state["capacity"], 1)
+        self.assertEqual(len(state["jobs"]), 3)
+        self.assertEqual(state["jobs"][0]["bed_id"], "b1")
+
+        status, body = self.call("POST", "/schedule/board/rush", {"id": "b3", "request_id": "r-1"})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["rebuilt"])
+        _, state = self.call("GET", "/schedule/board")
+        self.assertEqual(state["jobs"][0]["bed_id"], "b3")
+
+        status, body = self.call("POST", "/schedule/board/policy", {"rush_mode": "advance_one"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["rush_mode"], "advance_one")
+        status, _ = self.call("POST", "/schedule/board/policy", {"rush_mode": "sideways"})
+        self.assertEqual(status, 400)
+
+        status, body = self.call("POST", "/schedule/board/start", {"id": "b3", "request_id": "s-1"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["reason"], "started")
+        _, again = self.call("POST", "/schedule/board/start", {"id": "b3", "request_id": "s-1"})
+        self.assertFalse(again["rebuilt"])
+
+        status, body = self.call("POST", "/schedule/board/finish", {"id": "b3", "request_id": "f-1"})
+        self.assertEqual(status, 200)
+
+        status, body = self.call("POST", "/schedule/board/reconcile", {})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["consistent"], body["mismatches"])
+
+        status, body = self.call("POST", "/schedule/board/rush", {"id": "b3", "request_id": "r-2"})
+        self.assertEqual(status, 400)  # already started work cannot be rushed
+
+        _, snapshot = self.call("GET", "/snapshot")
+        self.assertIn("board", snapshot)
+        self.assertTrue(snapshot["board"]["adjustments"])
+        _, checks = self.call("GET", "/health/checks")
+        board_check = [c for c in checks["checks"] if c["name"] == "schedule-board"][0]
+        self.assertEqual(board_check["status"], "ok")
 
     def test_reset_store_and_errors(self) -> None:
         status, body = self.call("POST", "/ops/reset-store", {})
