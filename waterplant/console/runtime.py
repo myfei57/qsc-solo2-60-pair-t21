@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from waterplant.audit import Auditor
-from waterplant.backwash import Controller
+from waterplant.backwash import BackwashScheduler, Controller
 from waterplant.chlor import Doser as ChlorDoser
 from waterplant.clearwell import Well
 from waterplant.coag import Doser as CoagDoser
@@ -39,5 +39,6 @@ class Runtime:
         self.auditor = Auditor(store)
         self.stabilizer = Stabilizer(store)
         self.scheduler = Scheduler(store)
+        self.backwash_scheduler = BackwashScheduler(store, bank, self.backwash, self.auditor)
         self.trend = Trend(store)
         self.inventory = Inventory(store)

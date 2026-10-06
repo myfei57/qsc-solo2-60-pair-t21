@@ -249,6 +249,113 @@ def backwash_replay(server: "Server", request: Request) -> Response:
     return json_response({"replayed": server.runtime.backwash.replay()})
 
 
+def backwash_schedule_get(server: "Server", request: Request) -> Response:
+    current_slot = request.payload.get("current_slot")
+    capacity = request.payload.get("capacity")
+    try:
+        result = server.runtime.backwash_scheduler.state(
+            int(current_slot) if current_slot is not None else None,
+            int(capacity) if capacity is not None else None,
+            _capacity_by_slot(request),
+        )
+    except (TypeError, ValueError) as exc:
+        raise RequestError(400, str(exc)) from exc
+    return json_response(result.as_dict())
+
+
+def backwash_schedule_trigger(server: "Server", request: Request) -> Response:
+    try:
+        return _backwash_schedule_trigger(server, request)
+    except ValueError as exc:
+        if "already used" in str(exc):
+            raise RequestError(409, str(exc)) from exc
+        raise
+
+
+def _backwash_schedule_trigger(server: "Server", request: Request) -> Response:
+    request_id = request.str_field("request_id")
+    demands = _schedule_demands(request)
+    if not demands:
+        raise RequestError(400, "at least one bed demand is required")
+    capacity_by_slot = _capacity_by_slot(request)
+    result = server.runtime.backwash_scheduler.trigger(
+        request_id=request_id,
+        demands=demands,
+        current_slot=request.int_field("current_slot"),
+        capacity=request.int_field("capacity", 1),
+        capacity_by_slot=capacity_by_slot,
+    )
+    return json_response(result.as_dict())
+
+
+def backwash_schedule_expedite(server: "Server", request: Request) -> Response:
+    result = server.runtime.backwash_scheduler.expedite(
+        bed_id=request.str_field("id", request.str_field("bed_id")),
+        request_id=request.str_field("request_id"),
+        urgent=bool(request.payload.get("urgent", True)),
+    )
+    return json_response(result.as_dict())
+
+
+def backwash_schedule_start(server: "Server", request: Request) -> Response:
+    slot_value = request.payload.get("slot")
+    result = server.runtime.backwash_scheduler.start(
+        bed_id=request.str_field("id", request.str_field("bed_id")),
+        execution_request_id=request.str_field("request_id"),
+        current_slot=int(slot_value) if slot_value is not None else None,
+    )
+    return json_response(result.as_dict())
+
+
+def backwash_schedule_complete(server: "Server", request: Request) -> Response:
+    slot_value = request.payload.get("slot")
+    result = server.runtime.backwash_scheduler.complete(
+        bed_id=request.str_field("id", request.str_field("bed_id")),
+        execution_request_id=request.str_field("execution_request_id"),
+        completion_request_id=request.str_field("request_id"),
+        current_slot=int(slot_value) if slot_value is not None else None,
+    )
+    return json_response(result.as_dict())
+
+
+def backwash_schedule_reconcile(server: "Server", request: Request) -> Response:
+    slot_value = request.payload.get("current_slot")
+    result = server.runtime.backwash_scheduler.reconcile(
+        int(slot_value) if slot_value is not None else None
+    )
+    return json_response(result.as_dict())
+
+
+def _schedule_demands(request: Request) -> dict[str, dict[str, object]]:
+    demands = request.payload.get("demands")
+    if isinstance(demands, dict):
+        return {str(bed_id): dict(payload or {}) for bed_id, payload in demands.items()}
+    beds = request.payload.get("beds", demands)
+    if not isinstance(beds, list):
+        raise RequestError(400, "field demands must be an object or beds must be a list")
+    result: dict[str, dict[str, object]] = {}
+    for item in beds:
+        if not isinstance(item, dict):
+            raise RequestError(400, "each bed demand must be an object")
+        bed_id = str(item.get("id", item.get("bed_id", "")))
+        if not bed_id:
+            raise RequestError(400, "each bed demand requires id")
+        result[bed_id] = dict(item)
+    return result
+
+
+def _capacity_by_slot(request: Request) -> dict[int, int]:
+    value = request.payload.get("capacity_by_slot", {})
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise RequestError(400, "field capacity_by_slot must be an object")
+    try:
+        return {int(slot): int(capacity) for slot, capacity in value.items()}
+    except (TypeError, ValueError) as exc:
+        raise RequestError(400, "slot capacities must be integers") from exc
+
+
 def quota_add(server: "Server", request: Request) -> Response:
     amount = request.float_field("amount")
     validate_amount(amount)

@@ -188,6 +188,52 @@ class ConsoleCase(unittest.TestCase):
         status, body = self.call("POST", "/filter/remove", {"id": "b3"})
         self.assertEqual(body["removed"], "b3")
 
+    def test_constrained_backwash_schedule_routes_and_audit(self) -> None:
+        for bed_id, load in (("b1", 4.0), ("b2", 9.0)):
+            status, _ = self.call("POST", "/filter/add", {"id": bed_id, "zone": 1, "load": load})
+            self.assertEqual(status, 200)
+
+        payload = {
+            "request_id": "plan-1",
+            "current_slot": 0,
+            "capacity": 1,
+            "beds": [
+                {"id": "b1", "window_start": 0, "window_end": 1},
+                {"id": "b2", "window_start": 0, "window_end": 1},
+            ],
+        }
+        status, plan = self.call("POST", "/backwash/schedule", payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(plan["slots"][0]["scheduled"], ["b2"])
+        self.assertEqual([item["bed_id"] for item in plan["slots"][0]["waiting"]], ["b1"])
+
+        status, duplicated = self.call("POST", "/backwash/schedule", payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(duplicated, plan)
+
+        status, started = self.call(
+            "POST",
+            "/backwash/schedule/start",
+            {"id": "b2", "request_id": "start-b2"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(started["slots"][0]["running"], ["b2"])
+
+        status, expedited = self.call(
+            "POST",
+            "/backwash/schedule/expedite",
+            {"id": "b1", "request_id": "expedite-b1"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(expedited["slots"][0]["running"], ["b2"])
+        self.assertEqual([item["bed_id"] for item in expedited["slots"][0]["waiting"]], ["b1"])
+
+        status, audit = self.call("GET", "/audit/summary")
+        self.assertEqual(status, 200)
+        self.assertIn("backwash_schedule", audit["by_kind"])
+        self.assertIn("backwash_adjustment", audit["by_kind"])
+        self.assertEqual(audit["by_kind"]["backwash_schedule"], 1)
+
     def test_quota_and_audit_routes(self) -> None:
         status, body = self.call("POST", "/quota/add", {"amount": 40.0})
         self.assertEqual(body["value"], 40.0)

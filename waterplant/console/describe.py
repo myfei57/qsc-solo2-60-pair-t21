@@ -19,6 +19,7 @@ def collect(rt: Runtime) -> dict[str, str]:
         "chlor": rt.chlor_doser.describe(),
         "filter": rt.bank.describe(),
         "backwash": rt.backwash.describe(),
+        "backwash_schedule": _backwash_schedule(rt),
         "turbidity": rt.sampler.describe(),
         "flow": rt.calibration.describe(),
         "clearwell": rt.well.describe(),
@@ -29,3 +30,13 @@ def collect(rt: Runtime) -> dict[str, str]:
         "trend": rt.trend.describe(),
         "inventory": rt.inventory.describe(),
     }
+
+
+def _backwash_schedule(rt: Runtime) -> str:
+    result = rt.backwash_scheduler.state()
+    scheduled = sum(1 for job in result.jobs if job.status == "scheduled")
+    waiting = len(result.as_dict()["waiting_order"])
+    return (
+        f"backwash slots={len(result.slots)} scheduled={scheduled} "
+        f"waiting={waiting} partial_failure={result.partial_failure}"
+    )

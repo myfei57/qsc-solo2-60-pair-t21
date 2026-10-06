@@ -18,7 +18,8 @@ def collect(rt: Runtime) -> dict[str, object]:
         "coag": rt.coag_doser.state().as_dict(),
         "chlor": rt.chlor_doser.state().as_dict(),
         "filter": rt.bank.state().as_dict(),
-        "backwash": rt.backwash.state().as_dict(),
+        "backwash": rt.backwash.state().as_dict()
+        | {"constrained_schedule": rt.backwash_scheduler.state().as_dict()},
         "turbidity": rt.sampler.state().as_dict(),
         "flow": rt.calibration.state().as_dict(),
         "clearwell": rt.well.state().as_dict(),

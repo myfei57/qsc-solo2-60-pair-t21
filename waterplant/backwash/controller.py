@@ -32,6 +32,15 @@ class Controller:
         self._bank.close(bed_id)
         self._drain(bed_id)
 
+    def complete(self, bed_id: str) -> None:
+        """Close the drain after a backwash and return the bed to service."""
+
+        self._bank.open(bed_id)
+        self._store.delete(f"{DRAIN_KEY_PREFIX}{bed_id}")
+
+    def is_running(self, bed_id: str) -> bool:
+        return self._store.get(f"{DRAIN_KEY_PREFIX}{bed_id}")[1]
+
     def _drain(self, bed_id: str) -> None:
         if not self._bank.is_closed(bed_id):
             self._store.put(SPILL_KEY, "true")
